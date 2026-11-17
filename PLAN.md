@@ -17,14 +17,16 @@ Platform choices for later milestones: **Netlify Database** (managed Postgres, D
 - Seller listing composer (`/sell`): every required field, photo checks (type, size, max 10), a live preview card and a review summary. Submitting is turned off until seller accounts exist.
 - Sign in (`/login`) and registration (`/register`): forms check input as you type, and submitting is turned off until auth launches.
 - Platform status (`/status`): shows which services are connected.
-- `src/lib/marketplace.ts` is the single data-access module, and its fetchers return no records yet.
+- `src/lib/marketplace.ts` is the single data-access module. Its fetchers were connected to Netlify Database in Milestone 2.
 
-## Milestone 2 — Database foundation
+## ✅ Milestone 2 — Database foundation (done)
 
 - Drizzle schema in `db/schema.ts` covering users, user_profiles, seller_profiles, verification_records, categories, products, product_images, auctions, auction_bids, live_auction_events, live_auction_products, live_auction_participants, live_chat_messages, watchlists, notifications, orders, payments, refunds, payouts, shipping_addresses, shipments, reviews, reports, disputes, platform_settings and audit_logs.
 - Foreign keys, unique constraints (e.g. one watchlist row per user and auction), indexes on status/ends_at/category/country, and money stored as integer minor units.
 - Seed only reference data: categories, countries, currencies, default commission, anti-sniping window.
-- Swap the fetchers in `src/lib/marketplace.ts` for server functions that query approved auctions.
+- Connected `src/lib/marketplace.ts` to validated TanStack server functions querying Netlify Database. Public queries exclude draft/pending listings and inactive sellers; filtering, sorting and bounded pagination run in SQL.
+- Connected scheduled-event queries; live events require a connected video service and a confirmed broadcast session. Image URLs remain empty until the storage milestone connects image serving.
+- Database failures show the existing retryable error screen rather than an empty marketplace. Applied migrations were preserved unchanged.
 
 ## Milestone 3 — Accounts and roles
 
