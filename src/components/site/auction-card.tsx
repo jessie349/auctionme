@@ -57,7 +57,7 @@ export function AuctionCard({
         <div className="absolute top-3 left-3 flex gap-1.5">
           {isLive ? (
             <Badge className="gap-1 bg-live text-white">
-              <Radio className="size-3" aria-hidden="true" /> Live
+              <Radio className="size-3" aria-hidden="true" /> Live auction
             </Badge>
           ) : (
             <Badge className="gap-1 bg-background/90 text-foreground">

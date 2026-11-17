@@ -7,6 +7,7 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { AuctionCard } from '@/components/site/auction-card'
 import { EmptyState } from '@/components/site/empty-state'
+import { ResultPagination } from '@/components/site/result-pagination'
 import { NativeSelect } from '@/components/site/native-select'
 import {
   AUCTION_STATUSES,
@@ -14,7 +15,7 @@ import {
   CONDITIONS,
   COUNTRIES,
   STATUS_LABELS,
-  listAuctions,
+  listAuctionPage,
   type AuctionQuery,
 } from '@/lib/marketplace'
 
@@ -40,7 +41,11 @@ function tuple<T extends string>(values: T[]) {
 }
 
 const searchSchema = z.object({
-  view: z.enum(tuple(VIEWS.map((v) => v.value))).optional().catch(undefined),
+  page: z.coerce.number().int().min(1).max(10000).optional().catch(undefined),
+  view: z
+    .enum(tuple(VIEWS.map((v) => v.value)))
+    .optional()
+    .catch(undefined),
   q: z.string().max(120).optional().catch(undefined),
   category: z
     .enum(tuple(CATEGORIES.map((c) => c.slug)))
@@ -56,9 +61,22 @@ const searchSchema = z.object({
     .optional()
     .catch(undefined),
   status: z.enum(AUCTION_STATUSES).optional().catch(undefined),
-  minPrice: z.coerce.number().min(0).optional().catch(undefined),
-  maxPrice: z.coerce.number().min(0).optional().catch(undefined),
-  sort: z.enum(tuple(SORTS.map((s) => s.value))).optional().catch(undefined),
+  minPrice: z.coerce
+    .number()
+    .min(0)
+    .max(Number.MAX_SAFE_INTEGER / 100)
+    .optional()
+    .catch(undefined),
+  maxPrice: z.coerce
+    .number()
+    .min(0)
+    .max(Number.MAX_SAFE_INTEGER / 100)
+    .optional()
+    .catch(undefined),
+  sort: z
+    .enum(tuple(SORTS.map((s) => s.value)))
+    .optional()
+    .catch(undefined),
 })
 
 type Search = z.infer<typeof searchSchema>
@@ -71,13 +89,13 @@ const PUBLIC_STATUSES = AUCTION_STATUSES.filter(
 export const Route = createFileRoute('/auctions')({
   validateSearch: searchSchema,
   loaderDeps: ({ search }) => search,
-  loader: ({ deps }) => listAuctions(deps as AuctionQuery),
+  loader: ({ deps }) => listAuctionPage(deps as AuctionQuery),
   head: () => ({ meta: [{ title: 'Browse auctions — AuctionMe' }] }),
   component: AuctionsPage,
 })
 
 function AuctionsPage() {
-  const auctions = Route.useLoaderData()
+  const { items: auctions, page, hasMore } = Route.useLoaderData()
   const search = Route.useSearch()
   const navigate = useNavigate({ from: '/auctions' })
   const [filtersOpen, setFiltersOpen] = useState(false)
@@ -87,7 +105,7 @@ function AuctionsPage() {
   const update = (patch: Partial<Search>) =>
     navigate({
       search: (prev) => {
-        const next = { ...prev, ...patch }
+        const next = { ...prev, page: undefined, ...patch }
         for (const k of Object.keys(next) as (keyof Search)[]) {
           if (next[k] === '' || next[k] === undefined) delete next[k]
         }
@@ -97,7 +115,15 @@ function AuctionsPage() {
     })
 
   const filterCount = (
-    ['category', 'country', 'location', 'condition', 'status', 'minPrice', 'maxPrice'] as const
+    [
+      'category',
+      'country',
+      'location',
+      'condition',
+      'status',
+      'minPrice',
+      'maxPrice',
+    ] as const
   ).filter((k) => search[k] !== undefined).length
 
   return (
@@ -117,7 +143,11 @@ function AuctionsPage() {
           <Link
             key={v.value}
             to="/auctions"
-            search={(prev) => ({ ...prev, view: v.value === 'all' ? undefined : v.value })}
+            search={(prev) => ({
+              ...prev,
+              page: undefined,
+              view: v.value === 'all' ? undefined : v.value,
+            })}
             className={
               v.value === view
                 ? 'shrink-0 rounded-full bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground'
@@ -161,7 +191,8 @@ function AuctionsPage() {
             aria-controls="filters"
             onClick={() => setFiltersOpen((o) => !o)}
           >
-            <SlidersHorizontal /> Filters{filterCount ? ` (${filterCount})` : ''}
+            <SlidersHorizontal /> Filters
+            {filterCount ? ` (${filterCount})` : ''}
           </Button>
         </div>
       </form>
@@ -199,7 +230,11 @@ function AuctionsPage() {
             <NativeSelect
               id="f-category"
               value={search.category ?? ''}
-              onChange={(e) => update({ category: (e.target.value || undefined) as Search['category'] })}
+              onChange={(e) =>
+                update({
+                  category: (e.target.value || undefined) as Search['category'],
+                })
+              }
             >
               <option value="">All categories</option>
               {CATEGORIES.map((c) => (
@@ -213,7 +248,11 @@ function AuctionsPage() {
             <NativeSelect
               id="f-country"
               value={search.country ?? ''}
-              onChange={(e) => update({ country: (e.target.value || undefined) as Search['country'] })}
+              onChange={(e) =>
+                update({
+                  country: (e.target.value || undefined) as Search['country'],
+                })
+              }
             >
               <option value="">Any country</option>
               {COUNTRIES.map((c) => (
@@ -236,7 +275,12 @@ function AuctionsPage() {
             <NativeSelect
               id="f-condition"
               value={search.condition ?? ''}
-              onChange={(e) => update({ condition: (e.target.value || undefined) as Search['condition'] })}
+              onChange={(e) =>
+                update({
+                  condition: (e.target.value ||
+                    undefined) as Search['condition'],
+                })
+              }
             >
               <option value="">Any condition</option>
               {CONDITIONS.map((c) => (
@@ -250,7 +294,11 @@ function AuctionsPage() {
             <NativeSelect
               id="f-status"
               value={search.status ?? ''}
-              onChange={(e) => update({ status: (e.target.value || undefined) as Search['status'] })}
+              onChange={(e) =>
+                update({
+                  status: (e.target.value || undefined) as Search['status'],
+                })
+              }
             >
               <option value="">Any status</option>
               {PUBLIC_STATUSES.map((s) => (
@@ -271,7 +319,13 @@ function AuctionsPage() {
                 placeholder="Min"
                 key={`min-${search.minPrice ?? ''}`}
                 defaultValue={search.minPrice ?? ''}
-                onBlur={(e) => update({ minPrice: e.target.value ? Number(e.target.value) : undefined })}
+                onBlur={(e) =>
+                  update({
+                    minPrice: e.target.value
+                      ? Number(e.target.value)
+                      : undefined,
+                  })
+                }
               />
               <span className="text-muted-foreground">–</span>
               <Input
@@ -282,7 +336,13 @@ function AuctionsPage() {
                 placeholder="Max"
                 key={`max-${search.maxPrice ?? ''}`}
                 defaultValue={search.maxPrice ?? ''}
-                onBlur={(e) => update({ maxPrice: e.target.value ? Number(e.target.value) : undefined })}
+                onBlur={(e) =>
+                  update({
+                    maxPrice: e.target.value
+                      ? Number(e.target.value)
+                      : undefined,
+                  })
+                }
               />
             </div>
           </fieldset>
@@ -291,7 +351,8 @@ function AuctionsPage() {
         <section aria-label="Results">
           <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
             <p className="text-sm text-muted-foreground" aria-live="polite">
-              {auctions.length} {auctions.length === 1 ? 'auction' : 'auctions'}
+              {auctions.length} {auctions.length === 1 ? 'auction' : 'auctions'}{' '}
+              on this page
               {search.q ? ` matching “${search.q}”` : ''}
             </p>
             <div className="flex items-center gap-2">
@@ -302,7 +363,9 @@ function AuctionsPage() {
                 id="sort"
                 className="w-48"
                 value={search.sort ?? 'newest'}
-                onChange={(e) => update({ sort: e.target.value as Search['sort'] })}
+                onChange={(e) =>
+                  update({ sort: e.target.value as Search['sort'] })
+                }
               >
                 {SORTS.map((s) => (
                   <option key={s.value} value={s.value}>
@@ -323,14 +386,18 @@ function AuctionsPage() {
             <EmptyState
               icon={Gavel}
               title={
-                search.q || filterCount
-                  ? 'No auctions match your search'
-                  : 'No approved auctions yet'
+                page > 1
+                  ? 'No more auctions on this page'
+                  : search.q || filterCount
+                    ? 'No auctions match your search'
+                    : 'No approved auctions yet'
               }
               description={
-                search.q || filterCount
-                  ? 'Try removing a filter or searching for something broader.'
-                  : 'Listings appear here once they are approved by moderators. Sellers can start preparing listings today.'
+                page > 1
+                  ? 'Use Previous to return to earlier results.'
+                  : search.q || filterCount
+                    ? 'Try removing a filter or searching for something broader.'
+                    : 'Listings appear here once they are approved by moderators. Sellers can start preparing listings today.'
               }
               action={
                 <>
@@ -348,6 +415,13 @@ function AuctionsPage() {
               }
             />
           )}
+          <ResultPagination
+            page={page}
+            hasMore={hasMore}
+            onPage={(next) => {
+              void update({ page: next })
+            }}
+          />
         </section>
       </div>
     </div>

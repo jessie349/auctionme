@@ -7,12 +7,10 @@
  *  - shared types for auctions and live events;
  *  - the data-access functions `listAuctions` / `listLiveEvents`.
  *
- * AuctionMe never shows fabricated listings, bids, users or reviews. Until the
- * Netlify Database milestone lands (see PLAN.md), the access functions return
- * empty results and every screen renders its empty state. Replace their bodies
- * with server-function calls backed by the database — the screens do not need
- * to change.
+ * Public records are fetched through validated TanStack server functions.
  */
+import { createServerFn } from '@tanstack/react-start'
+import { z } from 'zod'
 
 export const CATEGORIES = [
   { slug: 'electronics', name: 'Electronics', icon: 'Cpu' },
@@ -146,12 +144,7 @@ export interface LiveEvent {
 }
 
 export type DiscoveryView =
-  | 'all'
-  | 'timed'
-  | 'live'
-  | 'upcoming'
-  | 'ending-soon'
-  | 'featured'
+  'all' | 'timed' | 'live' | 'upcoming' | 'ending-soon' | 'featured'
 
 export type SortKey = 'newest' | 'ending-soon' | 'highest-bid' | 'lowest-start'
 
@@ -166,85 +159,95 @@ export interface AuctionQuery {
   minPrice?: number
   maxPrice?: number
   sort?: SortKey
+  page?: number
+  pageSize?: number
 }
 
-/**
- * Data source for approved, public auctions.
- * Returns no records until the database milestone connects real listings.
- */
-async function fetchPublicAuctions(): Promise<Auction[]> {
-  return []
+/** Validated again on the server, including direct server-function calls. */
+export const auctionQuerySchema = z.object({
+  view: z
+    .enum(['all', 'timed', 'live', 'upcoming', 'ending-soon', 'featured'])
+    .optional(),
+  q: z.string().trim().max(120).optional(),
+  category: z.enum(CATEGORIES.map((c) => c.slug)).optional(),
+  country: z.enum(COUNTRIES.map((c) => c.code)).optional(),
+  location: z.string().trim().max(80).optional(),
+  condition: z.enum(CONDITIONS.map((c) => c.value)).optional(),
+  status: z.enum(AUCTION_STATUSES).optional(),
+  minPrice: z
+    .number()
+    .finite()
+    .min(0)
+    .max(Number.MAX_SAFE_INTEGER / 100)
+    .optional(),
+  maxPrice: z
+    .number()
+    .finite()
+    .min(0)
+    .max(Number.MAX_SAFE_INTEGER / 100)
+    .optional(),
+  sort: z
+    .enum(['newest', 'ending-soon', 'highest-bid', 'lowest-start'])
+    .optional(),
+  page: z.number().int().min(1).max(10000).default(1),
+  pageSize: z.number().int().min(1).max(48).default(24),
+})
+
+export const eventQuerySchema = z.object({
+  page: z.number().int().min(1).max(10000).default(1),
+  pageSize: z.number().int().min(1).max(48).default(24),
+})
+
+export interface PublicPage<T> {
+  items: T[]
+  page: number
+  hasMore: boolean
 }
 
-async function fetchLiveEvents(): Promise<LiveEvent[]> {
-  return []
-}
-
-const ENDING_SOON_WINDOW_MS = 24 * 60 * 60 * 1000
-
-/** Pure filter/sort used by discovery screens. Mirrors the server query the
- * database layer will run, so behaviour stays identical once data is real. */
-export function applyAuctionQuery(
-  auctions: Auction[],
-  query: AuctionQuery,
-  now = Date.now(),
-): Auction[] {
-  const q = query.q?.trim().toLowerCase()
-  const loc = query.location?.trim().toLowerCase()
-  const price = (a: Auction) => a.currentBid ?? a.startingPrice
-
-  const filtered = auctions.filter((a) => {
-    const ends = Date.parse(a.endsAt)
-    switch (query.view) {
-      case 'timed':
-        if (a.format !== 'timed') return false
-        break
-      case 'live':
-        if (a.format !== 'live') return false
-        break
-      case 'upcoming':
-        if (a.status !== 'scheduled') return false
-        break
-      case 'ending-soon':
-        if (a.status !== 'active' || ends - now > ENDING_SOON_WINDOW_MS)
-          return false
-        break
-      case 'featured':
-        if (!a.featured) return false
-        break
+const fetchPublicAuctions = createServerFn({ method: 'GET' })
+  .validator(auctionQuerySchema)
+  .handler(async ({ data }): Promise<PublicPage<Auction>> => {
+    try {
+      const { queryPublicAuctions } = await import('@/server/marketplace')
+      return await queryPublicAuctions(data)
+    } catch {
+      throw new Error(
+        'Marketplace data is temporarily unavailable. Please try again.',
+      )
     }
-    if (
-      q &&
-      !a.title.toLowerCase().includes(q) &&
-      !a.seller.username.toLowerCase().includes(q) &&
-      !a.category.includes(q)
-    )
-      return false
-    if (query.category && a.category !== query.category) return false
-    if (query.country && a.location.country !== query.country) return false
-    if (loc && !a.location.city.toLowerCase().includes(loc)) return false
-    if (query.condition && a.condition !== query.condition) return false
-    if (query.status && a.status !== query.status) return false
-    if (query.minPrice != null && price(a) < query.minPrice) return false
-    if (query.maxPrice != null && price(a) > query.maxPrice) return false
-    return true
   })
 
-  const sorters: Record<SortKey, (a: Auction, b: Auction) => number> = {
-    newest: (a, b) => Date.parse(b.createdAt) - Date.parse(a.createdAt),
-    'ending-soon': (a, b) => Date.parse(a.endsAt) - Date.parse(b.endsAt),
-    'highest-bid': (a, b) => (b.currentBid ?? 0) - (a.currentBid ?? 0),
-    'lowest-start': (a, b) => a.startingPrice - b.startingPrice,
-  }
-  return filtered.sort(sorters[query.sort ?? 'newest'])
+const fetchLiveEvents = createServerFn({ method: 'GET' })
+  .validator(eventQuerySchema)
+  .handler(async ({ data }): Promise<PublicPage<LiveEvent>> => {
+    try {
+      const { queryPublicEvents } = await import('@/server/marketplace')
+      return await queryPublicEvents(data)
+    } catch {
+      throw new Error(
+        'Live event data is temporarily unavailable. Please try again.',
+      )
+    }
+  })
+
+export function listAuctionPage(query: AuctionQuery = {}) {
+  return fetchPublicAuctions({ data: query })
 }
 
 export async function listAuctions(query: AuctionQuery = {}) {
-  return applyAuctionQuery(await fetchPublicAuctions(), query)
+  return (await listAuctionPage(query)).items
 }
 
-export async function listLiveEvents() {
-  return fetchLiveEvents()
+export function listLiveEventPage(
+  query: { page?: number; pageSize?: number } = {},
+) {
+  return fetchLiveEvents({ data: query })
+}
+
+export async function listLiveEvents(
+  query: { page?: number; pageSize?: number } = {},
+) {
+  return (await listLiveEventPage(query)).items
 }
 
 export function formatMoney(amount: number, currency: CurrencyCode) {
@@ -262,8 +265,8 @@ export const PLATFORM_SERVICES = [
     key: 'database',
     name: 'Marketplace database',
     provider: 'Netlify Database (Postgres)',
-    purpose: 'Listings, bids, orders, audit logs',
-    status: 'pending',
+    purpose: 'Public auction and event queries; marketplace schema',
+    status: 'connected',
   },
   {
     key: 'auth',

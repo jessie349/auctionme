@@ -1,4 +1,6 @@
-import { Link, createFileRoute } from '@tanstack/react-router'
+import { z } from 'zod'
+import { ResultPagination } from '@/components/site/result-pagination'
+import { Link, createFileRoute, useNavigate } from '@tanstack/react-router'
 import {
   CalendarClock,
   MessageSquare,
@@ -12,16 +14,25 @@ import { Button } from '@/components/ui/button'
 import { Countdown } from '@/components/site/countdown'
 import { EmptyState } from '@/components/site/empty-state'
 import { cdnImage } from '@/components/site/auction-card'
-import { PLATFORM_SERVICES, listLiveEvents, type LiveEvent } from '@/lib/marketplace'
+import {
+  PLATFORM_SERVICES,
+  listLiveEventPage,
+  type LiveEvent,
+} from '@/lib/marketplace'
 
 export const Route = createFileRoute('/live')({
-  loader: () => listLiveEvents(),
+  validateSearch: z.object({
+    page: z.coerce.number().int().min(1).max(10000).optional().catch(undefined),
+  }),
+  loaderDeps: ({ search }) => search,
+  loader: ({ deps }) => listLiveEventPage(deps),
   head: () => ({ meta: [{ title: 'Live auctions — AuctionMe' }] }),
   component: LivePage,
 })
 
 function LivePage() {
-  const events = Route.useLoaderData()
+  const { items: events, page, hasMore } = Route.useLoaderData()
+  const navigate = useNavigate({ from: '/live' })
   const liveNow = events.filter((e) => e.status === 'live')
   const upcoming = events
     .filter((e) => e.status === 'scheduled')
@@ -47,11 +58,26 @@ function LivePage() {
           </p>
           <div className="mt-8 grid gap-4 sm:grid-cols-3">
             {[
-              { icon: Radio, t: 'Real-time bidding', d: 'Accepted bids reach every participant instantly.' },
-              { icon: MessageSquare, t: 'Moderated chat', d: 'Rate limits, reporting and blocking built in.' },
-              { icon: ShieldCheck, t: 'Verified hosts', d: 'Only verified sellers can broadcast.' },
+              {
+                icon: Radio,
+                t: 'Real-time bidding',
+                d: 'Accepted bids reach every participant instantly.',
+              },
+              {
+                icon: MessageSquare,
+                t: 'Moderated chat',
+                d: 'Rate limits, reporting and blocking built in.',
+              },
+              {
+                icon: ShieldCheck,
+                t: 'Verified hosts',
+                d: 'Only verified sellers can broadcast.',
+              },
             ].map((f) => (
-              <div key={f.t} className="rounded-2xl border border-primary-foreground/15 bg-primary-foreground/5 p-5">
+              <div
+                key={f.t}
+                className="rounded-2xl border border-primary-foreground/15 bg-primary-foreground/5 p-5"
+              >
                 <f.icon className="size-5 text-accent" aria-hidden="true" />
                 <p className="mt-3 font-semibold">{f.t}</p>
                 <p className="mt-1 text-sm text-primary-foreground/70">{f.d}</p>
@@ -86,7 +112,11 @@ function LivePage() {
             ) : (
               <EmptyState
                 icon={Radio}
-                title="No one is broadcasting right now"
+                title={
+                  page > 1
+                    ? 'No broadcasts on this page'
+                    : 'No one is broadcasting right now'
+                }
                 description="When a verified seller starts their live auction, it appears here and you can join the room straight away."
               />
             )}
@@ -105,7 +135,11 @@ function LivePage() {
             ) : (
               <EmptyState
                 icon={CalendarClock}
-                title="No live events scheduled"
+                title={
+                  page > 1
+                    ? 'No upcoming events on this page'
+                    : 'No live events scheduled'
+                }
                 description="Verified sellers can schedule a live event with its own lots, starting prices and bid increments."
                 action={
                   <Button asChild>
@@ -116,6 +150,13 @@ function LivePage() {
             )}
           </div>
         </section>
+        <ResultPagination
+          page={page}
+          hasMore={hasMore}
+          onPage={(next) => {
+            void navigate({ search: { page: next } })
+          }}
+        />
       </div>
     </>
   )
@@ -141,7 +182,9 @@ function EventCard({ event }: { event: LiveEvent }) {
         )}
       </div>
       <div className="space-y-2 p-4">
-        <h3 className="font-sans text-base font-semibold tracking-normal">{event.title}</h3>
+        <h3 className="font-sans text-base font-semibold tracking-normal">
+          {event.title}
+        </h3>
         <p className="text-sm text-muted-foreground">
           {event.seller.username} · {event.lotCount} lots
         </p>

@@ -2,7 +2,7 @@
 
 Guide for AI agents and developers working on **AuctionMe**, an international auction marketplace (timed and live auctions). Slogan: *Discover. Bid. Win.*
 
-**Continue from [PLAN.md](./PLAN.md).** Milestone 1, the branded product surface, is done. Start the next unchecked milestone and don't rebuild completed screens.
+**Continue from [PLAN.md](./PLAN.md).** Milestones 1 (branded product surface) and 2 (database foundation) are done. Start the next unchecked milestone and don't rebuild completed screens.
 
 ## Non-negotiable product rules
 
@@ -27,8 +27,8 @@ Guide for AI agents and developers working on **AuctionMe**, an international au
 ## Key files
 
 ```
-src/lib/marketplace.ts         # THE data module: reference config, types, listAuctions/listLiveEvents,
-                               # applyAuctionQuery (filter/sort), formatMoney, PLATFORM_SERVICES status
+src/lib/marketplace.ts         # THE data module: reference config, types, validated public server functions,
+                               # listAuctions/listLiveEvents, page queries, formatMoney, PLATFORM_SERVICES status
 src/components/site/           # Brand components: header, footer, logo, auction-card (+ cdnImage),
                                # countdown, empty-state, native-select, category-icon, auth-shell
 src/routes/index.tsx           # Landing page
@@ -41,8 +41,8 @@ public/img/hero-gavel.png      # Brand hero image (always served through the Ima
 
 ## Conventions and decisions
 
-- Screens read data only through `src/lib/marketplace.ts`. To connect the database, replace `fetchPublicAuctions` / `fetchLiveEvents` with server-function queries. Screens and loaders stay the same.
-- `applyAuctionQuery` mirrors the intended SQL filter/sort. Move that logic into the DB query when real data exists, so large result sets aren't filtered in memory, and add pagination.
+- Screens read data only through `src/lib/marketplace.ts`. Validated server functions load `src/server/marketplace.ts`, which queries Netlify Database and returns only public fields.
+- Filtering, sorting and pagination run in SQL in `src/server/marketplace.ts`. List calls are bounded to 48 items maximum; discovery uses URL-based pages.
 - Drafts and `pending_approval` listings must never be returned by public queries.
 - Store money as integer minor units in the DB. Format with `formatMoney` (Intl).
 - Headings use the Fraunces display font (`h1–h3` / `font-display`); body text uses Manrope. Card titles override with `font-sans`.

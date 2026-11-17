@@ -21,9 +21,9 @@ import { CATEGORIES, listAuctions, listLiveEvents } from '@/lib/marketplace'
 export const Route = createFileRoute('/')({
   loader: async () => {
     const [endingSoon, featured, liveEvents] = await Promise.all([
-      listAuctions({ view: 'ending-soon', sort: 'ending-soon' }),
-      listAuctions({ view: 'featured' }),
-      listLiveEvents(),
+      listAuctions({ view: 'ending-soon', sort: 'ending-soon', pageSize: 8 }),
+      listAuctions({ view: 'featured', pageSize: 4 }),
+      listLiveEvents({ pageSize: 6 }),
     ])
     return { endingSoon, featured, liveEvents }
   },
